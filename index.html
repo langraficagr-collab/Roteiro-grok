@@ -3,114 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grok Prompt | Public Proxy Mode</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <title>Grok Local | Sem Chave</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        body { background-color: #050505; color: white; font-family: 'Inter', sans-serif; }
-        .bg-card { background: #0A0A0A; border: 1px solid rgba(255,255,255,0.1); }
+        body { background-color: #050505; color: white; font-family: sans-serif; }
+        .progress-bar { transition: width 0.3s ease; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="app" class="max-w-2xl mx-auto p-6">
+        <header class="mb-10 mt-6 flex justify-between items-center">
+            <h1 class="text-2xl font-black uppercase tracking-tighter">Grok <span class="text-indigo-500">Local</span></h1>
+            <span id="status-tag" class="text-[10px] bg-zinc-800 px-2 py-1 rounded border border-white/10 text-zinc-400">AGUARDANDO</span>
+        </header>
 
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+        <div id="loader" class="mb-8 hidden">
+            <div class="flex justify-between text-[10px] mb-2 uppercase font-bold text-indigo-400">
+                <span id="loader-text">Baixando "Cérebro" da IA...</span>
+                <span id="loader-pct">0%</span>
+            </div>
+            <div class="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
+                <div id="loader-fill" class="progress-bar bg-indigo-600 h-full" style="width: 0%"></div>
+            </div>
+        </div>
 
-        const App = () => {
-            const [theme, setTheme] = useState('');
-            const [apiKey, setApiKey] = useState(localStorage.getItem('grok_key') || '');
-            const [loading, setLoading] = useState(false);
-            const [results, setResults] = useState(null);
-            const [error, setError] = useState(null);
+        <div class="bg-[#0A0A0A] border border-white/10 p-6 rounded-[2rem] shadow-2xl space-y-4">
+            <textarea id="theme" placeholder="Sobre o que será o vídeo?" class="w-full bg-black border border-white/10 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none"></textarea>
+            
+            <button id="gen-btn" class="w-full bg-white text-black font-black p-4 rounded-2xl hover:bg-indigo-500 hover:text-white transition-all">
+                INICIALIZAR E GERAR
+            </button>
+        </div>
 
-            // Proxy público para evitar bloqueio de CORS
-            const PROXY = "https://cors-anywhere.herokuapp.com/";
+        <div id="output" class="mt-10 space-y-6 pb-20"></div>
+    </div>
 
-            useEffect(() => { if (window.lucide) lucide.createIcons(); }, [results, loading]);
+    <script type="module">
+        import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 
-            const generate = async () => {
-                if (!apiKey) return setError("Adicione sua chave no topo.");
-                setLoading(true);
-                setError(null);
+        const btn = document.getElementById('gen-btn');
+        const themeInput = document.getElementById('theme');
+        const output = document.getElementById('output');
+        const loader = document.getElementById('loader');
+        const loaderFill = document.getElementById('loader-fill');
+        const loaderPct = document.getElementById('loader-pct');
+        const statusTag = document.getElementById('status-tag');
 
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        let engine;
 
-                try {
-                    const response = await fetch(PROXY + endpoint, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: `Gere roteiro de vídeo sobre ${theme}. Retorne JSON: {"steps": [{"prompt": "inglês", "script": "português"}]}` }] }],
-                            generationConfig: { responseMimeType: "application/json" }
-                        })
-                    });
+        // Configuração do modelo (Llama-3 é ótimo para roteiros)
+        const selectedModel = "Llama-3-8B-Instruct-q4f32_1-MLC";
 
-                    if (response.status === 403) {
-                        throw new Error("Clique no link acima para ativar o Proxy Público.");
-                    }
-
-                    const data = await response.json();
-                    setResults(JSON.parse(data.candidates[0].content.parts[0].text));
-                } catch (err) {
-                    setError(err.message);
-                } finally {
-                    setLoading(false);
+        async function initEngine() {
+            if (engine) return engine;
+            
+            loader.classList.remove('hidden');
+            engine = await webllm.CreateMLCEngine(selectedModel, {
+                initProgressCallback: (report) => {
+                    const pct = Math.round(report.progress * 100);
+                    loaderFill.style.width = `${pct}%`;
+                    loaderPct.innerText = `${pct}%`;
+                    if (pct === 100) statusTag.innerText = "PRONTO";
                 }
-            };
+            });
+            return engine;
+        }
 
-            return (
-                <div className="max-w-xl mx-auto p-6">
-                    <div className="mb-8 text-center">
-                        <h1 className="text-2xl font-black text-indigo-500 uppercase">Grok Public Proxy</h1>
-                        <a href="https://cors-anywhere.herokuapp.com/corsdemo" target="_blank" className="text-[10px] text-slate-500 underline uppercase tracking-widest">
-                            1. Clique aqui para autorizar o Proxy antes de usar
-                        </a>
+        btn.onclick = async () => {
+            const theme = themeInput.value;
+            if (!theme) return alert("Digite um tema!");
+
+            btn.disabled = true;
+            btn.innerText = "PENSANDO...";
+            statusTag.innerText = "PROCESSANDO";
+
+            try {
+                const client = await initEngine();
+                
+                const messages = [
+                    { role: "system", content: "Você é um roteirista de vídeos curtos. Gere 3 cenas. Para cada cena forneça: 1. Prompt de imagem em inglês. 2. Narração em português. Seja direto." },
+                    { role: "user", content: `Tema: ${theme}` }
+                ];
+
+                const reply = await client.chat.completions.create({ messages });
+                const text = reply.choices[0].message.content;
+
+                // Renderiza o resultado de forma simples
+                output.innerHTML = `
+                    <div class="bg-[#0A0A0A] border border-indigo-500/30 p-6 rounded-3xl animate-pulse">
+                        <pre class="whitespace-pre-wrap font-sans text-sm leading-relaxed">${text}</pre>
                     </div>
-
-                    <div className="bg-card p-6 rounded-3xl space-y-4">
-                        <input 
-                            type="password"
-                            placeholder="Sua API Key"
-                            className="w-full bg-black p-3 rounded-xl border border-white/10 text-xs"
-                            value={apiKey}
-                            onChange={(e) => { setApiKey(e.target.value); localStorage.setItem('grok_key', e.target.value); }}
-                        />
-                        <input 
-                            placeholder="Tema do vídeo..." 
-                            className="w-full bg-black p-4 rounded-xl border border-white/10 outline-none focus:border-indigo-500"
-                            value={theme} onChange={e => setTheme(e.target.value)}
-                        />
-                        <button 
-                            onClick={generate}
-                            disabled={loading}
-                            className="w-full bg-indigo-600 p-4 rounded-xl font-bold hover:bg-indigo-500 transition-all"
-                        >
-                            {loading ? "CONECTANDO VIA PROXY..." : "GERAR AGORA"}
-                        </button>
-                    </div>
-
-                    {error && <div className="mt-4 p-4 bg-red-500/10 text-red-500 text-xs rounded-xl border border-red-500/20">{error}</div>}
-
-                    {results && (
-                        <div className="mt-8 space-y-4">
-                            {results.steps.map((s, i) => (
-                                <div key={i} className="bg-card p-5 rounded-2xl">
-                                    <p className="text-xs text-indigo-400 font-mono mb-2">{s.prompt}</p>
-                                    <p className="font-bold italic">"{s.script}"</p>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            );
+                `;
+            } catch (err) {
+                console.error(err);
+                alert("Erro: Seu navegador pode não suportar WebGPU ou não ter memória suficiente.");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "GERAR NOVAMENTE";
+                statusTag.innerText = "PRONTO";
+            }
         };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
     </script>
 </body>
 </html>
