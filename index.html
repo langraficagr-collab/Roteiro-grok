@@ -3,106 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grok Local | Sem Chave</title>
+    <title>Grok Logic Studio | Zero AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        body { background-color: #050505; color: white; font-family: sans-serif; }
-        .progress-bar { transition: width 0.3s ease; }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #050505; color: white; }
+        .logic-card { background: linear-gradient(145deg, #0a0a0a 0%, #111 100%); border: 1px solid rgba(255,255,255,0.05); }
     </style>
 </head>
-<body>
-    <div id="app" class="max-w-2xl mx-auto p-6">
-        <header class="mb-10 mt-6 flex justify-between items-center">
-            <h1 class="text-2xl font-black uppercase tracking-tighter">Grok <span class="text-indigo-500">Local</span></h1>
-            <span id="status-tag" class="text-[10px] bg-zinc-800 px-2 py-1 rounded border border-white/10 text-zinc-400">AGUARDANDO</span>
+<body class="p-4 md:p-8">
+    <div class="max-w-2xl mx-auto">
+        <header class="flex items-center gap-4 mb-10 border-b border-white/5 pb-8">
+            <div class="bg-emerald-600 p-3 rounded-2xl shadow-lg shadow-emerald-900/20">
+                <i data-lucide="cpu" class="text-white"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-black tracking-tight uppercase">Grok <span class="text-emerald-500">Logic</span></h1>
+                <p class="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Motor Algorítmico Local (Sem API / Sem IA)</p>
+            </div>
         </header>
 
-        <div id="loader" class="mb-8 hidden">
-            <div class="flex justify-between text-[10px] mb-2 uppercase font-bold text-indigo-400">
-                <span id="loader-text">Baixando "Cérebro" da IA...</span>
-                <span id="loader-pct">0%</span>
+        <div class="space-y-4 mb-10">
+            <div class="space-y-2">
+                <label class="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em] ml-1">Tema ou Palavra-Chave</label>
+                <input id="themeInput" type="text" placeholder="Ex: Espaço, Cyberpunk, Natureza..." 
+                    class="w-full bg-black border border-white/10 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-emerald-500 outline-none transition-all">
             </div>
-            <div class="w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden">
-                <div id="loader-fill" class="progress-bar bg-indigo-600 h-full" style="width: 0%"></div>
-            </div>
-        </div>
-
-        <div class="bg-[#0A0A0A] border border-white/10 p-6 rounded-[2rem] shadow-2xl space-y-4">
-            <textarea id="theme" placeholder="Sobre o que será o vídeo?" class="w-full bg-black border border-white/10 p-4 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none"></textarea>
             
-            <button id="gen-btn" class="w-full bg-white text-black font-black p-4 rounded-2xl hover:bg-indigo-500 hover:text-white transition-all">
-                INICIALIZAR E GERAR
+            <button onclick="processLogic()" class="w-full bg-white text-black font-black py-4 rounded-2xl hover:bg-emerald-500 hover:text-white transition-all active:scale-95 flex items-center justify-center gap-2">
+                <i data-lucide="zap" class="w-4 h-4"></i> COMPILAR ROTEIRO AGORA
             </button>
         </div>
 
-        <div id="output" class="mt-10 space-y-6 pb-20"></div>
+        <div id="results" class="space-y-6"></div>
     </div>
 
-    <script type="module">
-        import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+    <script>
+        // --- DATABASE DE LÓGICA (Heurística) ---
+        const ENGINE_DB = {
+            styles: [
+                "Cinematic 4k, hyper-realistic, volumetric lighting, unreal engine 5 render, wide shot",
+                "Dark moody atmosphere, neon highlights, anamorphic lens, grainy texture, 8k resolution",
+                "Ethereal lighting, soft focus background, vibrant colors, macro photography style",
+                "Epic scale, dramatic shadows, intense contrast, highly detailed textures, IMAX quality"
+            ],
+            hooks: [
+                "Você já se perguntou o que acontece quando [TEMA] encontra o desconhecido?",
+                "Prepare-se para descobrir a verdade oculta sobre [TEMA].",
+                "Isso é o que ninguém te contou sobre [TEMA] até agora.",
+                "Imagine um mundo onde [TEMA] dita todas as regras."
+            ],
+            narratives: [
+                "A ciência por trás disso é fascinante e assustadora ao mesmo tempo.",
+                "Cada detalhe aqui foi planejado para desafiar sua percepção.",
+                "A evolução desse conceito mudou tudo o que conhecemos hoje.",
+                "O impacto visual é apenas o começo de uma jornada profunda."
+            ]
+        };
 
-        const btn = document.getElementById('gen-btn');
-        const themeInput = document.getElementById('theme');
-        const output = document.getElementById('output');
-        const loader = document.getElementById('loader');
-        const loaderFill = document.getElementById('loader-fill');
-        const loaderPct = document.getElementById('loader-pct');
-        const statusTag = document.getElementById('status-tag');
+        function processLogic() {
+            const theme = document.getElementById('themeInput').value || "este tema";
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
 
-        let engine;
-
-        // Configuração do modelo (Llama-3 é ótimo para roteiros)
-        const selectedModel = "Llama-3-8B-Instruct-q4f32_1-MLC";
-
-        async function initEngine() {
-            if (engine) return engine;
-            
-            loader.classList.remove('hidden');
-            engine = await webllm.CreateMLCEngine(selectedModel, {
-                initProgressCallback: (report) => {
-                    const pct = Math.round(report.progress * 100);
-                    loaderFill.style.width = `${pct}%`;
-                    loaderPct.innerText = `${pct}%`;
-                    if (pct === 100) statusTag.innerText = "PRONTO";
-                }
-            });
-            return engine;
-        }
-
-        btn.onclick = async () => {
-            const theme = themeInput.value;
-            if (!theme) return alert("Digite um tema!");
-
-            btn.disabled = true;
-            btn.innerText = "PENSANDO...";
-            statusTag.innerText = "PROCESSANDO";
-
-            try {
-                const client = await initEngine();
+            // Gerar 3 etapas baseadas em aleatoriedade controlada (Random Forest simplificado)
+            for (let i = 1; i <= 3; i++) {
+                const style = ENGINE_DB.styles[Math.floor(Math.random() * ENGINE_DB.styles.length)];
+                let script = "";
                 
-                const messages = [
-                    { role: "system", content: "Você é um roteirista de vídeos curtos. Gere 3 cenas. Para cada cena forneça: 1. Prompt de imagem em inglês. 2. Narração em português. Seja direto." },
-                    { role: "user", content: `Tema: ${theme}` }
-                ];
+                if (i === 1) script = ENGINE_DB.hooks[Math.floor(Math.random() * ENGINE_DB.hooks.length)];
+                else script = ENGINE_DB.narratives[Math.floor(Math.random() * ENGINE_DB.narratives.length)];
+                
+                // Substituição dinâmica (Machine Learning Heurístico)
+                const finalScript = script.replace("[TEMA]", theme);
+                const finalPrompt = `${theme}, ${style}, sequence ${i}, masterwork.`;
 
-                const reply = await client.chat.completions.create({ messages });
-                const text = reply.choices[0].message.content;
-
-                // Renderiza o resultado de forma simples
-                output.innerHTML = `
-                    <div class="bg-[#0A0A0A] border border-indigo-500/30 p-6 rounded-3xl animate-pulse">
-                        <pre class="whitespace-pre-wrap font-sans text-sm leading-relaxed">${text}</pre>
+                const card = `
+                    <div class="logic-card p-6 rounded-[2rem] animate-up border-l-4 border-emerald-500 shadow-xl">
+                        <div class="flex justify-between items-center mb-4">
+                            <span class="text-[10px] font-black bg-white/5 px-3 py-1 rounded-full text-emerald-400 uppercase tracking-widest">Etapa 0${i}</span>
+                            <button onclick="copyText('${finalPrompt}\\n${finalScript}')" class="text-slate-500 hover:text-white transition-colors">
+                                <i data-lucide="copy" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <p class="text-[9px] font-bold text-slate-500 uppercase tracking-tighter mb-1">Prompt Visual (AI Ready)</p>
+                                <p class="text-sm font-mono text-slate-300 leading-relaxed">${finalPrompt}</p>
+                            </div>
+                            <div class="pt-4 border-t border-white/5">
+                                <p class="text-[9px] font-bold text-emerald-500 uppercase tracking-tighter mb-1">Narração Sugerida</p>
+                                <p class="text-lg font-bold text-white italic">"${finalScript}"</p>
+                            </div>
+                        </div>
                     </div>
                 `;
-            } catch (err) {
-                console.error(err);
-                alert("Erro: Seu navegador pode não suportar WebGPU ou não ter memória suficiente.");
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "GERAR NOVAMENTE";
-                statusTag.innerText = "PRONTO";
+                resultsDiv.innerHTML += card;
             }
-        };
+            lucide.createIcons();
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text);
+            alert("Copiado!");
+        }
+
+        window.onload = () => lucide.createIcons();
     </script>
 </body>
 </html>
